@@ -32,7 +32,7 @@ function getResults(input, callback) {
         callback(null, output);
     }).catch(function (e) {
         try {
-            console.log('error:', e);
+            // Error occurred during processing
                         
         } catch (error) {
             console.error('Error in search controller:', error);
@@ -63,7 +63,7 @@ function bulkInsert(finalResults, sessionId, prmExchanged, prmRequest) {
     });
     
     async.map(redisArray, saveRedis.store, (result) => {
-        console.log(result);
+        // Result from bulk insert
     });
    
 }
@@ -91,7 +91,7 @@ async function search(searchBody, url, token) {
             'Content-Type': 'application/json', 
             'Authorization': 'Bearer ' + token
         } });
-        console.log(33, JSON.stringify(response.data));
+        // Response data received
         
         if (response.data && response.data.Success === 'true' && response.data.ConversationId && response.data.ConversationId !== "" &&  response.data.data && response.data.data.PricedItineraries && response.data.data.PricedItineraries.length > 0) {
             for (let i = 0; i < response.data.data.PricedItineraries.length; i++) {
@@ -101,7 +101,7 @@ async function search(searchBody, url, token) {
         }
         
     } catch (error) {
-        console.log("🚀 ~ search ~ error:", error);
+        // Search error occurred
         
     }
 
@@ -154,7 +154,7 @@ function getLastResult(result) {
  * Handles flight search requests to AJet NDC service
  */
 async function index(req, res) {
-    console.log('Received request to search controller');
+    // Request received by search controller
     console.time('search-ndc');
     
     try {
@@ -240,15 +240,11 @@ async function index(req, res) {
         let adultCount = 0, childCount = 0, infantCount = 0;
         const passengerTypes = TravelerInfoSummary.AirTravelerAvail.PassengerTypeQuantity;
         
-        // Debug passenger information
-        console.log('Passenger information:', JSON.stringify(passengerTypes));
-        
-        // Check each passenger type and extract quantity
+        // Extract passenger counts from the passenger types
         passengerTypes.forEach(pt => {
-            // Make sure we have both Code and Quantity
+            // Skip invalid entries
             if (!pt.Code || pt.Quantity === undefined) {
-                console.log('Invalid passenger type entry:', pt);
-                return; // Skip this entry
+                return;
             }
             
             // Convert quantity to number if it's a string
@@ -258,36 +254,22 @@ async function index(req, res) {
             if (pt.Code === 'ADT') adultCount = quantity;
             else if (pt.Code === 'CHD') childCount = quantity;
             else if (pt.Code === 'INF') infantCount = quantity;
-            // Handle SH as adult (appears to be a custom code for adult/standard human)
+            // Handle SH as adult (custom code for adult/standard human)
             else if (pt.Code === 'SH' && quantity > 0) {
-                console.log('Treating SH passenger type as adult');
                 adultCount = quantity;
             }
-            else console.log('Unknown passenger type:', pt.Code);
         });
-        
-        console.log('Extracted passenger counts:', { adultCount, childCount, infantCount });
         
         // Check if any passenger type has a quantity > 0
         const hasPassengers = passengerTypes.some(pt => parseInt(pt.Quantity, 10) > 0);
         
         // Validate at least one passenger is specified
         if (!hasPassengers) {
-            // For debugging, show the complete request body
-            console.log('Complete request body:', JSON.stringify(req.body, null, 2));
-            
             return res.status(400).json({
                 success: false,
-                error: 'At least one passenger must be specified',
-                receivedPayload: {
-                    travelerInfo: TravelerInfoSummary,
-                    passengerTypes: passengerTypes
-                }
+                error: 'At least one passenger must be specified'
             });
         }
-        
-        console.log('Passenger validation passed. Found these passengers:', 
-            passengerTypes.filter(pt => parseInt(pt.Quantity, 10) > 0).map(pt => `${pt.Code}: ${pt.Quantity}`));
         
  
 
@@ -301,17 +283,7 @@ async function index(req, res) {
         // Build searchParams for downstream usage
         try {
             // Log only the parameter values, not searchParams itself
-            console.log('Building SOAP request with parameters:', {
-                origin,
-                destination,
-                departureDate,
-                cabinClass,
-                adultCount,
-                childCount,
-                infantCount,
-                Lang
-            });
-
+            
             const searchParams = {
                 origin,
                 destination,
@@ -335,26 +307,11 @@ async function index(req, res) {
             });
         }
 
-        // doAirShop module is already imported at the top of the file
-        
         // Prepare search parameters for the AirShopping request
         let searchParams;
         
         try {
-            console.log('Building SOAP request with parameters:', {
-                origin,
-                destination,
-                departureDate,
-                cabinClass: cabinClass || 'Y',
-                adultCount,
-                childCount,
-                infantCount,
-                Lang
-            });
-            
-            // getRawXmlPayload is already imported at the top of the file
-            
-            // No default values - all must come from payload
+            // Validate required parameters
             if (!cabinClass) {
                 return res.status(400).json({
                     success: false,
@@ -385,7 +342,7 @@ async function index(req, res) {
             });
         }
 
-        console.log('Sending request to AJet NDC service');
+        // Sending request to AJet NDC service
         
         // Add a timeout to the entire operation
         const controller = new AbortController();
@@ -396,15 +353,8 @@ async function index(req, res) {
         // Make the request to AJet NDC service using our fixed doAirShop module
         let response;
         try {
-            console.time('ndc-request');
-            
-            // Get the raw XML request for logging and response
+            // Get the raw XML request for the payload
             const rawXmlRequest = await getRawXmlPayload(searchParams);
-            
-            // Print the XML request prominently in the console for debugging
-            console.log('\n\n==== RAW XML REQUEST FOR DEBUGGING ====');
-            console.log(rawXmlRequest);
-            console.log('==== END OF RAW XML REQUEST ====\n\n');
             
             // If format=xml is specified, return the raw XML request
             if (req.query.format === 'xml') {
@@ -415,19 +365,12 @@ async function index(req, res) {
             // Use the sendAirShoppingRequest function from doAirShop.js
             response = await sendAirShoppingRequest(searchParams, {
                 timeout: 60000, // 60 seconds timeout
-                logRequest: true, // Log the request for debugging
-                logResponse: true, // Log the response for debugging
                 maxContentLength: 50 * 1024 * 1024, // 50MB
                 maxBodyLength: 50 * 1024 * 1024 // 50MB
             });
             
-            console.timeEnd('ndc-request');
-            console.log('Response status:', response.status);
-            
             // Process the response data
             if (response.data) {
-                console.log('Received response data');
-                
                 // If format=xml query parameter is provided, return the raw XML response
                 if (req.query.format === 'xml') {
                     if (typeof response.data === 'string' && response.data.includes('<?xml')) {
@@ -446,9 +389,7 @@ async function index(req, res) {
                     try {
                         // Use the mapXmlToJson function to convert XML to JSON
                         jsonData = await mapXmlToJson(response.data);
-                        console.log('Successfully converted XML response to JSON');
                     } catch (error) {
-                        console.error('Error converting XML to JSON:', error);
                         // Return a structured error response
                         return res.status(500).json({
                             success: false,
@@ -466,32 +407,18 @@ async function index(req, res) {
             }
             
         } catch (error) {
-            console.error('Error making request to AJet NDC service:', error.message);
+            // Clear the timeout to prevent memory leaks
+            clearTimeout(timeout);
             
+            // Handle different types of errors
             if (error.response) {
                 // The request was made and the server responded with a status code
                 // that falls out of the range of 2xx
-                console.error('Response status:', error.response.status);
-                console.error('Response headers:', error.response.headers);
-                console.error('Response data:', error.response.data);
             } else if (error.request) {
                 // The request was made but no response was received
-                console.error('No response received. Request details:', {
-                    url: process.env.AJET_NDC_ENDPOINT || 'https://tkj-stage.crane.aero/cranendc/v20.1/CraneNDCService',
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/xml;charset=UTF-8',
-                        'SOAPAction': 'cranendc/doAirShop',
-                        'username': process.env.AJET_NDC_USER_ID || 'NEWLINKTRAVEL',
-                        'password': '******' // Masked for security
-                    },
-                    searchParams: searchParams,
-                    timeout: error.config?.timeout,
-                    proxy: error.config?.proxy
-                });
+                // Log request details for troubleshooting
             } else {
                 // Something happened in setting up the request that triggered an Error
-                console.error('Request setup error:', error.message);
             }
             
             console.timeEnd('search-ndc');
@@ -503,7 +430,7 @@ async function index(req, res) {
             });
         }
 
-        console.log('Processing AJet NDC response');
+        // Processing AJet NDC response
         console.timeEnd('search-ndc');
         
         // The response is already transformed by doAirShop.js
@@ -524,11 +451,11 @@ async function index(req, res) {
         }
         
         // Log the number of flight options found
-        console.log(`Found ${response.data.Items?.length || 0} flight options`);
+        // Flight options found
         
         // Log the full response in development for debugging
         if (process.env.NODE_ENV === 'development') {
-            console.log('Response sample:', JSON.stringify(response.data).substring(0, 2000) + '...');
+            // Response sample received
         }
         
         // Format the response according to our API standards
@@ -544,9 +471,7 @@ async function index(req, res) {
         };
         
         // Log the structure of the response data
-        console.log('Response data structure:', 
-            Object.keys(response.data).length > 0 ? 
-            Object.keys(response.data) : 'Empty response');
+        // Response data structure processed
             
         // Send the formatted response
         return res.json(formattedResponse);
