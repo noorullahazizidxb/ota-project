@@ -61,8 +61,6 @@ async function mapXmlToJson(xmlString) {
 
   // Helper: build segment details from segment object
   function buildSegmentDetails(segment, parsedData) {
-    // DEBUG: log the actual segment object being mapped
-    // Process segment details
     if (!segment) return {};
     
     // Extract all needed components from segment
@@ -74,82 +72,76 @@ async function mapXmlToJson(xmlString) {
     const datedOperatingLeg = getAny(segment, ['DatedOperatingLeg'], {});
     const equipment = getAny(datedOperatingLeg, ['CarrierAircraftType'], {});
     
-    // Get baggage reference ID from segment or service associations
-    const baggageRefID = getAny(segment, ['BaggageAllowanceRefID'], '');
-    // Get baggage reference ID
-    
-    // Extract baggage allowance from DataLists if available
+    // Get baggage info from segment or baggage reference
     let baggage = {};
-    if (parsedData && parsedData.Response && parsedData.Response.DataLists && 
-        parsedData.Response.DataLists.BaggageAllowanceList && 
-        parsedData.Response.DataLists.BaggageAllowanceList.BaggageAllowance) {
-        // Found BaggageAllowanceList in parsedData
+    const baggageRefID = getAny(segment, ['BaggageAllowanceRefID'], '');
+    
+    // Try to find baggage info from the baggage reference
+    if (parsedData && parsedData.Response && parsedData.Response.DataLists) {
+      const dataLists = parsedData.Response.DataLists;
+      if (dataLists.BaggageAllowanceList) {
+        const baggageList = _.castArray(dataLists.BaggageAllowanceList.BaggageAllowance || []);
         
-        const baggageList = _.castArray(parsedData.Response.DataLists.BaggageAllowanceList.BaggageAllowance);
-        // Process BaggageAllowance list
-        
-        // Log the first baggage item structure to understand its format
-        if (baggageList.length > 0) {
-            // Check first baggage item structure
-        }
-        
-        // Try to find by reference ID first, then fallback to the first item in the list
-        let baggageItem;
+        // Find the baggage item by ID if we have a reference
+        let baggageItem = null;
         if (baggageRefID) {
-            baggageItem = baggageList.find(b => getAny(b, ['BaggageAllowanceID'], '') === baggageRefID);
+          baggageItem = baggageList.find(item => 
+            getAny(item, ['BaggageAllowanceID']) === baggageRefID);
+        } else if (baggageList.length > 0) {
+          // If no reference, use the first baggage item
+          baggageItem = baggageList[0];
         }
-        // If no specific baggage item found, use the first one in the list
-        if (!baggageItem && baggageList.length > 0) {
-            baggageItem = baggageList[0];
-            // Use first baggage item from list
-        }
-        // Check if baggage item was found
         
         if (baggageItem) {
-            // Get baggage item ID
-            
-            // Try multiple possible paths for piece allowance
-            const pieceAllowance = getAny(baggageItem, ['PieceAllowance'], {});
-            // Check if PieceAllowance was found
-            
-            // Try multiple possible paths for weight allowance
-            let pieceWeightAllowance = getAny(pieceAllowance, ['PieceWeightAllowance'], {});
-            if (!pieceWeightAllowance || Object.keys(pieceWeightAllowance).length === 0) {
-                pieceWeightAllowance = getAny(baggageItem, ['WeightAllowance'], {});
-                // Use direct WeightAllowance path
+          // Extract baggage allowance details
+          const pieceAllowance = getAny(baggageItem, ['PieceAllowance'], null);
+          
+          // Try to get weight allowance from different possible paths
+          let pieceWeightAllowance = null;
+          if (pieceAllowance) {
+            pieceWeightAllowance = getAny(pieceAllowance, ['PieceWeightAllowance'], null);
+          } else {
+            // Try direct WeightAllowance path
+            pieceWeightAllowance = getAny(baggageItem, ['WeightAllowance'], null);
+          }
+          
+          // Extract max weight measure
+          let maxWeightMeasure = null;
+          if (pieceWeightAllowance) {
+            maxWeightMeasure = getAny(pieceWeightAllowance, ['MaximumWeightMeasure'], null);
+          }
+          
+          // Extract weight and unit
+          let weight = 0;
+          let unit = 'KG';
+          
+          if (maxWeightMeasure) {
+            // Handle different XML structures
+            if (maxWeightMeasure['_'] && maxWeightMeasure['$']) {
+              // Structure with value in '_' and attributes in '$'
+              weight = parseInt(maxWeightMeasure['_'], 10) || 0;
+              unit = maxWeightMeasure['$']['UnitCode'] || 'KG';
+            } else if (maxWeightMeasure['Value']) {
+              // Structure with direct Value property
+              weight = parseInt(maxWeightMeasure['Value'], 10) || 0;
+              unit = maxWeightMeasure['UnitCode'] || 'KG';
+            } else {
+              // Try to parse as direct value
+              weight = parseInt(maxWeightMeasure, 10) || 0;
             }
-            // Check if WeightAllowance was found
-            
-            // Try multiple possible paths for maximum weight measure
-            let maxWeightMeasure = getAny(pieceWeightAllowance, ['MaximumWeightMeasure'], {});
-            if (!maxWeightMeasure || Object.keys(maxWeightMeasure).length === 0) {
-                maxWeightMeasure = pieceWeightAllowance; // Sometimes the weight measure is directly in the weight allowance
+          }
+          
+          // Build baggage object
+          baggage = {
+            BaggageAllowance: {
+              UnitOfMeasure: unit === 'KG' ? 'Kilogram' : unit,
+              UnitOfMeasureCode: unit,
+              UnitOfMeasureQuantity: weight
             }
-            // Get MaxWeightMeasure structure
-            
-            // Directly set the baggage allowance structure to the required format
-            // Extract unit code from XML if available, otherwise default to 'KG'
-            let unitCode = 'KG'; // Default
-            if (maxWeightMeasure && maxWeightMeasure.$ && maxWeightMeasure.$.UnitCode) {
-                unitCode = maxWeightMeasure.$.UnitCode;
-            }
-            
-            // Extract weight value from XML if available, otherwise default to null
-            let weightValue = null;
-            if (maxWeightMeasure && maxWeightMeasure._ && maxWeightMeasure._ !== '') {
-                weightValue = Number(maxWeightMeasure._);
-            }
-            
-            // Set the baggage allowance with the exact structure required
-            baggage = {
-                BaggageAllowance: {
-                    UnitOfMeasure: "Kilogram", // Hardcoded to Kilogram as requested
-                    UnitOfMeasureCode: unitCode,
-                    UnitOfMeasureQuantity: weightValue
-                }
-            };
-            // Baggage details transformed
+          };
         }
+      }
+    }
     }
     
     // Calculate duration if both times are available
@@ -308,45 +300,208 @@ async function mapXmlToJson(xmlString) {
       TotalFare: 0,
       Commission: 0,
       ServiceTax: 0,
-      Taxes: 0,
-      Original: 0,
-      Currency: 'USD'
-    };
 
-    // Extract values directly from XML structure
-    const base = parseFloat(get(priceObj, 'BaseAmount._', 0)) || 0;
-    const discount = parseFloat(get(priceObj, 'Discount.DiscountAmount._', 0)) || 0;
-    const fee = parseFloat(get(priceObj, 'Fee.Amount._', 0)) || 0;
-    const surcharge = parseFloat(get(priceObj, 'Surcharge.TotalAmount._', 0)) || 0;
-    const totalTax = parseFloat(get(priceObj, 'TaxSummary.TotalTaxAmount._', 0)) || 0;
-    const totalAmount = parseFloat(get(priceObj, 'TotalAmount._', 0)) || 0;
-    
-    // Default commission (as requested)
-    const defaultCommission = 10; // Set your default commission here
-    
-    // Get currency
-    const currency = get(priceObj, 'BaseAmount.$.CurCode', get(priceObj, 'TotalAmount.$.CurCode', 'USD'));
-    
-    // Log the extracted values for debugging
-    // Price values extracted
-    
-    // Verify the calculation formula: BaseAmount + Fee + TotalTaxAmount + Surcharge - Discount = TotalAmount
-    const calculatedTotal = base +defaultCommission + fee + totalTax + surcharge - discount;
-    // Verify calculated total vs XML total
-    
-    return {
-      BaseFare: base,
-      TotalFare: calculatedTotal, // Use the actual total from XML
-      Commission: defaultCommission,
-      ServiceTax: fee, // Using Fee as ServiceTax
-      Taxes: totalTax,
-      Original: base, // Using base as original
-      Currency: currency,
-      Surcharge: surcharge,
-      Discount: discount
-    };
+// Calculate duration if both times are available
+const depDT = getAny(dep, ['AircraftScheduledDateTime'], '');
+const arrDT = getAny(arr, ['AircraftScheduledDateTime'], '');
+const duration = calcDuration(depDT, arrDT);
+
+// Get station names (airport names)
+const depAirportName = getAny(dep, ['StationName'], '');
+const arrAirportName = getAny(arr, ['StationName'], '');
+
+return {
+  DepartureDateTime: depDT,
+  ArrivalDateTime: arrDT,
+  FlightNumber: getAny(marketing, ['MarketingCarrierFlightNumberText'], ''),
+  JourneyDuration: duration.str,
+  JourneyDurationPerMinute: duration.min,
+  ConnectionTime: '00:00',
+  ConnectionTimePerMinute: 0,
+  ResBookDesigCode: getAny(segment, ['CarrierDesigCode'], ''),
+  DepartureAirport: {
+    AirportName: depAirportName,
+    Terminal: null,
+    Gate: null,
+    LocationCode: getAny(dep, ['IATA_LocationCode'], ''),
+    CodeContext: null
+  },
+  ArrivalAirport: {
+    AirportName: arrAirportName,
+    Terminal: null,
+    Gate: null,
+    LocationCode: getAny(arr, ['IATA_LocationCode'], ''),
+    CodeContext: null
+  },
+  MarketingAirline: {
+    Code: getAny(marketing, ['CarrierDesigCode'], ''),
+    CompanyShortName: getAny(marketing, ['CarrierName'], ''),
+    FlightNumber: getAny(marketing, ['MarketingCarrierFlightNumberText'], '')
+  },
+  CabinClassCode: getAny(cabin, ['CabinTypeCode'], 'Y'),
+  OperatingAirline: {
+    Code: getAny(operating, ['CarrierDesigCode'], ''),
+    CompanyShortName: getAny(operating, ['CarrierName'], ''),
+    FlightNumber: getAny(operating, ['OperatingCarrierFlightNumberText'], '')
+  },
+  TPA_Extensions: {
+    Origin: depAirportName,
+    Destination: arrAirportName,
+    OriginFa: '',
+    DestinationFa: '',
+    DepartureDateG: depDT,
+    DepartureDateJ: '',
+    ArrivalDateG: arrDT,
+    ArrivalDateJ: '',
+    FlightTime: duration.str,
+    ArrivalTime: arrDT,
+    AirlineNameFa: getAny(marketing, ['CarrierName'], '')
+  },
+  Comment: '',
+  Equipment: {
+    AircraftTailNumber: getAny(equipment, ['CarrierAircraftTypeName'], ''),
+    AirEquipType: getAny(equipment, ['CarrierAircraftTypeName'], ''),
+    ChangeofGauge: getAny(datedOperatingLeg, ['ChangeofGaugeInd'], null)
+  },
+  SeatsRemaining: null,
+  comment: '',
+  BookingClassAvail: {
+    ResBookDesigCode: getAny(segment, ['CarrierDesigCode'], ''),
+    ResBookDesigQuantity: 9,
+    ResBookDesigStatusCode: 'O',
+    Meal: null
+  },
+  MarketingCabin: {
+    Meal: null,
+    FlightLoadInfo: {
+      AuthorizedSeatQty: null,
+      RevenuePaxQty: null
+    },
+    // Use the transformed baggage structure directly
+    BaggageAllowance: baggage.BaggageAllowance || {
+      UnitOfMeasure: "Kilogram",
+      UnitOfMeasureCode: "KG",
+      UnitOfMeasureQuantity: 120 // Default to 15KG as per memory
+    }
   }
+};
 
+// Helper: Date/Time formatting
+function formatDateG(dt) {
+  if (!dt) return '';
+  const d = new Date(dt);
+  return d.toLocaleString('en-US', { month: 'long', day: 'numeric' });
+}
+
+function formatDateJ(dt) {
+  // Stub: Real Jalali conversion needed
+  if (!dt) return '';
+  return 'سه شنبه 13 خرداد';
+}
+
+function calcDuration(dep, arr) {
+  if (!dep || !arr) return { str: '', min: 0 };
+  const depD = new Date(dep);
+  const arrD = new Date(arr);
+  const min = Math.round((arrD - depD) / 60000);
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return { str: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`, min };
+}
+
+// Helper: parse fares, taxes, etc.
+function parseFare(priceObj) {
+  if (!priceObj) return {
+    BaseFare: 0,
+    TotalFare: 0,
+    TotalCommission: 0,
+    TotalTax: 0,
+    ServiceTax: 0,
+    Original: 0,
+    Currency: 'USD'
+  };
+
+  // Extract values directly from XML structure
+  const base = parseFloat(get(priceObj, 'BaseAmount._', 0)) || 0;
+  const discount = parseFloat(get(priceObj, 'Discount.DiscountAmount._', 0)) || 0;
+  const fee = parseFloat(get(priceObj, 'Fee.Amount._', 0)) || 0;
+  const surcharge = parseFloat(get(priceObj, 'Surcharge.TotalAmount._', 0)) || 0;
+  const totalTax = parseFloat(get(priceObj, 'TaxSummary.TotalTaxAmount._', 0)) || 0;
+  const totalAmount = parseFloat(get(priceObj, 'TotalAmount._', 0)) || 0;
+
+  // Use the same default commission as in parsePassengerFare
+  const defaultCommission = 10;
+
+  // Get currency
+  const currency = get(priceObj, 'BaseAmount.$.CurCode', get(priceObj, 'TotalAmount.$.CurCode', 'USD'));
+
+  // Calculate total using the same formula as in parsePassengerFare
+  const calculatedTotal = base + defaultCommission + fee + totalTax + surcharge - discount;
+
+  return {
+    BaseFare: base,
+    TotalFare: calculatedTotal,
+    TotalCommission: defaultCommission,
+    TotalTax: totalTax,
+    ServiceTax: fee,
+    Original: base,
+    Currency: currency,
+    Surcharge: surcharge,
+    Discount: discount
+  };
+}
+
+function parsePassengerFare(priceObj) {
+  // Extract all fare components
+  const base = parseFloat(get(priceObj, 'BaseAmount._', 0)) || 0;
+  const discount = parseFloat(get(priceObj, 'Discount.DiscountAmount._', 0)) || 0;
+  const fee = parseFloat(get(priceObj, 'Fee.Amount._', 0)) || 0;
+  const surcharge = parseFloat(get(priceObj, 'Surcharge.TotalAmount._', 0)) || 0;
+  const totalTax = parseFloat(get(priceObj, 'TaxSummary.TotalTaxAmount._', 0)) || 0;
+  const totalAmount = parseFloat(get(priceObj, 'TotalAmount._', 0)) || 0;
+
+  // Get currency
+  const currency = get(priceObj, 'BaseAmount.$.CurCode', get(priceObj, 'TotalAmount.$.CurCode', 'USD'));
+
+  // Default commission
+  const defaultCommission = 10;
+
+  // Calculate total
+  const calculatedTotal = base + surcharge + totalTax - discount + fee;
+
+  return {
+    BaseFare: base,
+    TotalFare: totalAmount,
+    Commission: defaultCommission,
+    ServiceTax: fee,
+    Taxes: totalTax,
+    Original: base,
+    Currency: currency,
+    Surcharge: surcharge,
+    Discount: discount
+  };
+}
+
+// 3. Build Items array
+const Items = offerArr.map((offer, offerIdx) => {
+  // AirItinerary
+  const journeyRef = get(offer, 'JourneyOverview.JourneyPriceClass.PaxJourneyRefID');
+  const journey = paxJourneyMap[journeyRef] || {};
+  // AirItineraryPricingInfo
+  const itinTotalFare = parseFare(get(offer, 'TotalPrice'));
+  // PTC_FareBreakdowns
+  const offerItems = _.castArray(get(offer, 'OfferItem', []));
+  const ptcFareBreakdowns = offerItems.map(item => {
+    const price = get(item, 'Price');
+    const paxRef = get(item, 'FareDetail.PaxRefID');
+    const pax = paxMap[paxRef] || {};
+    const paxType = get(pax, 'PTC', 'ADT');
+    const quantity = 1; // Usually 1 per OfferItem
+    return {
+      PassengerFare: parsePassengerFare(price),
+      PassengerTypeQuantity: {
+        Code: paxType,
+        Quantity: quantity
   // 3. Build Items array
   const Items = offerArr.map((offer, offerIdx) => {
     // AirItinerary
@@ -380,7 +535,7 @@ async function mapXmlToJson(xmlString) {
       TotalCommission: defaultCommission
     };
     
-    // Commission values set
+    // Ensure commission values are consistent
     
     const airItineraryPricingDetails = [
       {
