@@ -158,21 +158,180 @@ async function index(req, res) {
     console.time('search-ndc');
     
     try {
+        // Parse new payload structure
         const {
-            origin,
-            destination,
-            departureDate,
-            cabinClass = 'Y',
-            passengers = [{ type: 'ADT', count: 1 }],
-            currency = 'USD',
-            language = 'EN'
+            Lang,
+            TravelPreference,
+            TravelerInfoSummary,
+            OriginDestinationInformations
         } = req.body;
 
-        // Validate required parameters
-        if (!origin || !destination || !departureDate) {
+        // Validate required fields in new payload with more detailed validation
+        if (!Lang) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required parameters: origin, destination, departureDate'
+                error: 'Missing required parameter: Lang'
+            });
+        }
+        
+        if (!TravelPreference) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: TravelPreference'
+            });
+        }
+        
+        if (!TravelerInfoSummary) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: TravelerInfoSummary'
+            });
+        }
+        
+        // Check AirTravelerAvail structure
+        if (!TravelerInfoSummary.AirTravelerAvail) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: TravelerInfoSummary.AirTravelerAvail'
+            });
+        }
+        
+        // Check PassengerTypeQuantity array
+        if (!TravelerInfoSummary.AirTravelerAvail.PassengerTypeQuantity || 
+            !Array.isArray(TravelerInfoSummary.AirTravelerAvail.PassengerTypeQuantity) || 
+            TravelerInfoSummary.AirTravelerAvail.PassengerTypeQuantity.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: TravelerInfoSummary.AirTravelerAvail.PassengerTypeQuantity must be a non-empty array'
+            });
+        }
+        
+        if (!OriginDestinationInformations || !Array.isArray(OriginDestinationInformations) || OriginDestinationInformations.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: OriginDestinationInformations'
+            });
+        }
+        
+        // Extract first segment and validate required fields
+        const segment = OriginDestinationInformations[0];
+        if (!segment.OriginLocation || !segment.OriginLocation.LocationCode) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: Origin location code'
+            });
+        }
+        
+        if (!segment.DestinationLocation || !segment.DestinationLocation.LocationCode) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: Destination location code'
+            });
+        }
+        
+        if (!segment.DepartureDateTime) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required parameter: Departure date time'
+            });
+        }
+
+        // Extract passenger counts - no default values
+        let adultCount = 0, childCount = 0, infantCount = 0;
+        const passengerTypes = TravelerInfoSummary.AirTravelerAvail.PassengerTypeQuantity;
+        
+        // Debug passenger information
+        console.log('Passenger information:', JSON.stringify(passengerTypes));
+        
+        // Check each passenger type and extract quantity
+        passengerTypes.forEach(pt => {
+            // Make sure we have both Code and Quantity
+            if (!pt.Code || pt.Quantity === undefined) {
+                console.log('Invalid passenger type entry:', pt);
+                return; // Skip this entry
+            }
+            
+            // Convert quantity to number if it's a string
+            const quantity = parseInt(pt.Quantity, 10);
+            
+            // Assign to the appropriate counter
+            if (pt.Code === 'ADT') adultCount = quantity;
+            else if (pt.Code === 'CHD') childCount = quantity;
+            else if (pt.Code === 'INF') infantCount = quantity;
+            // Handle SH as adult (appears to be a custom code for adult/standard human)
+            else if (pt.Code === 'SH' && quantity > 0) {
+                console.log('Treating SH passenger type as adult');
+                adultCount = quantity;
+            }
+            else console.log('Unknown passenger type:', pt.Code);
+        });
+        
+        console.log('Extracted passenger counts:', { adultCount, childCount, infantCount });
+        
+        // Check if any passenger type has a quantity > 0
+        const hasPassengers = passengerTypes.some(pt => parseInt(pt.Quantity, 10) > 0);
+        
+        // Validate at least one passenger is specified
+        if (!hasPassengers) {
+            // For debugging, show the complete request body
+            console.log('Complete request body:', JSON.stringify(req.body, null, 2));
+            
+            return res.status(400).json({
+                success: false,
+                error: 'At least one passenger must be specified',
+                receivedPayload: {
+                    travelerInfo: TravelerInfoSummary,
+                    passengerTypes: passengerTypes
+                }
+            });
+        }
+        
+        console.log('Passenger validation passed. Found these passengers:', 
+            passengerTypes.filter(pt => parseInt(pt.Quantity, 10) > 0).map(pt => `${pt.Code}: ${pt.Quantity}`));
+        
+ 
+
+        // Extract location and date information
+        const origin = segment.OriginLocation.LocationCode;
+        const destination = segment.DestinationLocation.LocationCode;
+        const departureDate = segment.DepartureDateTime;
+        // If needed: const arrivalDate = segment.ArrivalDateTime;
+        const cabinClass = TravelPreference.CabinPref?.Cabin;
+
+        // Build searchParams for downstream usage
+        try {
+            // Log only the parameter values, not searchParams itself
+            console.log('Building SOAP request with parameters:', {
+                origin,
+                destination,
+                departureDate,
+                cabinClass,
+                adultCount,
+                childCount,
+                infantCount,
+                Lang
+            });
+
+            const searchParams = {
+                origin,
+                destination,
+                departureDate,
+                cabinClass,
+                adults: adultCount,
+                children: childCount,
+                infants: infantCount,
+                language: Lang,
+                travelPreference: TravelPreference,
+                travelerInfoSummary: TravelerInfoSummary,
+                originDestinationInformations: OriginDestinationInformations
+            };
+        } catch (error) {
+            console.error('Error preparing search parameters:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to prepare search parameters',
+                message: error.message,
+                details: process.env.NODE_ENV === 'development' ? error.stack : undefined
             });
         }
 
@@ -187,21 +346,34 @@ async function index(req, res) {
                 destination,
                 departureDate,
                 cabinClass: cabinClass || 'Y',
-                passengerCount: (passengers || [{ type: 'ADT', count: 1 }]).length
+                adultCount,
+                childCount,
+                infantCount,
+                Lang
             });
             
             // getRawXmlPayload is already imported at the top of the file
+            
+            // No default values - all must come from payload
+            if (!cabinClass) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Missing required parameter: CabinPref.Cabin'
+                });
+            }
             
             searchParams = {
                 origin: origin,
                 destination: destination,
                 departureDate: departureDate,
-                cabinClass: cabinClass || 'Y',
-                adults: passengers?.filter(p => p.type === 'ADT')?.length || 1,
-                children: passengers?.filter(p => p.type === 'CHD')?.length || 0,
-                infants: passengers?.filter(p => p.type === 'INF')?.length || 0,
-                currency: currency || 'USD',
-                language: language || 'EN'
+                cabinClass: cabinClass,
+                // Include original passenger types from the payload
+                passengerTypes: TravelerInfoSummary.AirTravelerAvail.PassengerTypeQuantity,
+                // Keep these for backward compatibility
+                adults: adultCount,
+                children: childCount,
+                infants: infantCount,
+                language: Lang
             };
         } catch (error) {
             console.error('Error preparing search parameters:', error);
@@ -228,9 +400,13 @@ async function index(req, res) {
             
             // Get the raw XML request for logging and response
             const rawXmlRequest = await getRawXmlPayload(searchParams);
-            console.log('Raw XML Request:', rawXmlRequest);
             
-            // If the format=xml query parameter is provided, return the raw XML request
+            // Print the XML request prominently in the console for debugging
+            console.log('\n\n==== RAW XML REQUEST FOR DEBUGGING ====');
+            console.log(rawXmlRequest);
+            console.log('==== END OF RAW XML REQUEST ====\n\n');
+            
+            // If format=xml is specified, return the raw XML request
             if (req.query.format === 'xml') {
                 clearTimeout(timeout);
                 return res.status(200).type('application/xml').send(rawXmlRequest);
@@ -248,11 +424,45 @@ async function index(req, res) {
             console.timeEnd('ndc-request');
             console.log('Response status:', response.status);
             
-            // The response is already in the desired format
-            // No need to parse XML or transform the data
+            // Process the response data
             if (response.data) {
-                console.log('Response contains data with', 
-                    response.data.Items?.length || 0, 'flight options');
+                console.log('Received response data');
+                
+                // If format=xml query parameter is provided, return the raw XML response
+                if (req.query.format === 'xml') {
+                    if (typeof response.data === 'string' && response.data.includes('<?xml')) {
+                        return res.status(200).type('application/xml').send(response.data);
+                    }
+                    if (response.originalData && typeof response.originalData === 'string') {
+                        return res.status(200).type('application/xml').send(response.originalData);
+                    }
+                }
+                
+                // Convert XML to JSON if needed
+                let jsonData = response.data;
+                
+                // If the response is XML, convert it to JSON
+                if (typeof response.data === 'string' && response.data.includes('<?xml')) {
+                    try {
+                        // Use the mapXmlToJson function to convert XML to JSON
+                        jsonData = await mapXmlToJson(response.data);
+                        console.log('Successfully converted XML response to JSON');
+                    } catch (error) {
+                        console.error('Error converting XML to JSON:', error);
+                        // Return a structured error response
+                        return res.status(500).json({
+                            success: false,
+                            error: 'Failed to convert XML response to JSON',
+                            message: error.message
+                        });
+                    }
+                }
+                
+                // Return the JSON response
+                return res.status(200).json({
+                    success: true,
+                    data: jsonData
+                });
             }
             
         } catch (error) {

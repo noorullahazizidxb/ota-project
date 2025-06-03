@@ -95,19 +95,43 @@ function validateParams(params, requiredParams) {
  */
 async function buildAirShoppingRQ(searchParams) {
     try {
-        // Extract search parameters
-        const origin = searchParams.origin || process.env.DEFAULT_ORIGIN || 'SAW';
-        const destination = searchParams.destination || process.env.DEFAULT_DESTINATION || 'DXB';
-        const departureDate = searchParams.departureDate || process.env.DEFAULT_DEPARTURE_DATE || '2025-07-01';
-        const cabinClass = searchParams.cabinClass || process.env.DEFAULT_CABIN_CLASS || 'Y';
-        const passengers = searchParams.passengers || [{ type: 'ADT', count: 1 }];
+        // Extract search parameters - no default values except for currency
+        const origin = searchParams.origin;
+        const destination = searchParams.destination;
+        const departureDate = searchParams.departureDate;
+        const cabinClass = searchParams.cabinClass;
         
-        // Generate passenger XML
-        const paxsXml = passengers.map((pax, index) => `
+        // Use the original passenger type codes from the payload
+        const passengerTypes = searchParams.passengerTypes || [];
+        
+        console.log('Building XML with original passenger types:', passengerTypes);
+        
+        // Generate passenger XML using the original passenger type codes
+        // Create multiple entries for each passenger type based on quantity
+        let paxsXml = '';
+        let paxCounter = 1;
+        
+        // Log the passenger types for debugging
+        console.log('Processing passenger types:', passengerTypes);
+        
+        // Process each passenger type in the array
+        passengerTypes.forEach((pt, typeIndex) => {
+            const quantity = parseInt(pt.Quantity, 10);
+            console.log(`Processing passenger type ${pt.Code} with quantity ${quantity}`);
+            
+            // Create multiple entries if quantity > 1
+            for (let i = 0; i < quantity; i++) {
+                paxsXml += `
           <ns1:Pax>
-            <ns1:PaxID>${pax.type}${index + 1}</ns1:PaxID>
-            <ns1:PTC>${pax.type}</ns1:PTC>
-          </ns1:Pax>`).join('');
+            <ns1:PaxID>${pt.Code}${paxCounter}</ns1:PaxID>
+            <ns1:PTC>${pt.Code}</ns1:PTC>
+          </ns1:Pax>`;
+                
+                paxCounter++;
+            }
+        });
+        
+        console.log('Generated passenger XML entries:', paxsXml);
         
         const apiVersion = process.env.AJET_NDC_API_VERSION || '20.1';
         const username = process.env.AJET_NDC_USER_ID || 'NEWLINKTRAVEL';
@@ -167,6 +191,11 @@ async function buildAirShoppingRQ(searchParams) {
   </SOAP-ENV:Body>
 </SOAP-ENV:Envelope>`;
 
+        // Print the XML request in console for debugging
+        console.log('\n\n==== COMPLETE XML REQUEST ====');
+        console.log(xmlPayload);
+        console.log('==== END OF XML REQUEST ====\n\n');
+        
         return xmlPayload;
     } catch (error) {
         console.error('Error generating AirShopping XML:', error);
