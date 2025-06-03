@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+service GensecService {
+    rpc Authenticate (Token) returns (UserSession) {}
+    rpc Authorize (AuthorizeRequest) returns (AuthorizeResponse) {}
+    rpc AccountSubsystem (AccountSubsystemRequest) returns (AccountSubsystemResponse) {}
+    rpc CurrencyConvert (CurrencyConvertRequest) returns (CurrencyConvertResponse) {}
+    rpc OrganizationCurrency (OrganizationCurrencyRequest) returns (OrganizationCurrencyResponse) {}
+    rpc SubsystemInfo (SubsystemInfoRequest) returns (SubsystemInfoResponse) {}
+    rpc TicketInfo (TicketInfoRequest) returns (TicketInfoResponse) {}
+    rpc GuestTokenMetaSearch (GuestTokenMetaSearchRequest) returns (GuestTokenMetaSearchResponse) {}
+    rpc MarkupLevel (MarkupLevelRequest) returns (MarkupLevelResponse) {}
+}
+message Subsystem {
+    required int32 subsystemId = 1;
+    required int32 accountSubsystemId = 2;
+    required string subsystemName = 3;
+   
+}
+message MarkupLevelRequest {
+    repeated Subsystem subsystemList = 1;
+}
+message MarkupLevelResponse {
+    repeated AccountSubsystemInfo accountSubsystemInfoes = 1;
+}
+
+message AccountSubsystemInfoItems {
+    required int32 id = 1;
+    required int32 orgId = 2;
+    required int32 levelId = 3;
+    required int32 parentId = 4;
+    required int32 accountId = 5;
+    required int32 companyId = 6;
+    required int32 subsystemId = 7;
+    required int32 defaultCurrencyId = 8;
+    required string defaultCurrencyAbb = 9;
+    required int32 commissionCategoryId = 10;
+    
+}
+
+message AccountSubsystemInfo {
+    required int32 SubsystemId = 1;
+    required int32 AccountSubsystemId = 2;
+    required string SubsystemName = 3;
+    repeated AccountSubsystemInfoItems Items = 4;
+}
+message Token {
+    required int32 orgId = 1;
+    required int32 accountId = 2;
+    required string origin = 3;
+    required string token = 4;
+}
+
+message UserSession {
+    required string userSession = 1;
+}
+message AuthorizeRequest {
+    required string method = 1;
+    required string path = 2;
+    required int32 roleId = 3;
+   
+}
+message AuthorizeResponse {
+    required string isPermitted = 1;
+}
+message AccountSubsystemRequest {
+    required int32 SubsystemId = 1;
+    required int32 FirstAccountId = 2;
+}
+
+message AccountSubsystemResponse {
+    required int32 orgId = 1;
+    required string email = 2;
+    required string mobile = 3;
+}
+
+message CurrencyConvertRequest {
+    required int32 OrgId = 1;
+}
+
+message CurrencyConvertResponse {
+    repeated Result results = 1;
+}
+message OrganizationCurrencyRequest {
+    required int32 OrgId = 1;
+}
+
+message OrganizationCurrencyResponse {
+    repeated Result currencyConvertItems = 1;
+    required string defaultCurrency = 2;
+    required string defaultCurrencyId = 3;
+}
+message Result {
+    required int32 Id = 1;
+    required int32 AccountId = 2;
+    required int32 FromCurrencyId = 3;
+    required int32 ToCurrencyId = 4;
+    required string FromCurrencyAbb = 5;
+    required string ToCurrencyAbb = 6;
+    required string ToCurrencyAbbFa = 7;
+    required string FromCurrencyAbbFa = 8;
+    required int32 Amount = 9;
+    required double AmountDecimal = 10;
+}
+message SubsystemInfoRequest {
+    required int32 SubsystemId = 1;
+}
+
+message SubsystemInfoResponse {
+    required int32 orgId = 1;
+    required int32 charterDefaultData = 2;
+    required int32 systemDefaultData = 3;
+    required string defaultMobileCountryCode = 4;
+    required string subsystemDefaultMobile = 5;
+    required string defaultEmail = 6;
+    required string defaultMobile = 7;
+    required string data = 8;
+    required string SubsystemName = 9;
+    required string adminMobile = 10;
+    required string smsProvider = 11;
+}
+message TicketInfoRequest {
+    required int32 OrgId = 1;
+    required int32 AccountId = 2;
+}
+message TicketInfoResponse {
+    required string ticketInfo = 1;
+}
+message GuestTokenMetaSearchRequest {
+    required int32 OrgId = 1;
+}
+message GuestTokenMetaSearchResponse {
+    required string guestTokenMetasearch = 1;
+    
+}
+
+

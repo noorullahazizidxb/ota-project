@@ -1,0 +1,59 @@
+version: '3.4'
+x-logging:
+  &default-logging
+  options:
+    max-size: '12m'
+    max-file: '5'
+  driver: json-file
+services:
+  sepehr_microservice_dev:
+    build:
+      context: .
+    command: npm start
+    volumes:
+      - .:/usr/app/
+      - /usr/app/node_modules
+    container_name: sepehr_microservice_dev
+    logging: *default-logging
+    environment:
+      - ENVIRONMENT=DEV
+      - PORT=7033
+      - DBHOST=192.168.2.197
+      - DBNAME=sepehr
+      - DBUSERNAME=root
+      - DBPASSWORD=sys
+      - DBPORT=6446
+      - DBPORTRO=6447
+      - REDISHOST=192.168.2.33
+      - REDISPORT=6379
+      - REDISDB=0
+      - REDISPASSWORD=sys
+      - RABBITMQ=amqp://localhost
+      - SECRET=ilovescotchyscotchkaskas
+      - MICROSERVICENAME=sepehr
+    ports:
+      - "7033:7033"
+    network_mode: "host"
+
+  # db:
+  #   build:
+  #     context: ./db
+  #   command: 
+  #    --default-authentication-plugin=mysql_native_password
+  #    --log_bin_trust_function_creators=1
+  #   environment:
+  #     MYSQL_DATABASE: 'gensec'
+  #     # So you don't have to use root, but you can if you like
+  #     MYSQL_USER: 'test'
+  #     # You can use whatever password you like
+  #     MYSQL_PASSWORD: 'sys'
+  #     # Password for root access
+  #     MYSQL_ROOT_PASSWORD: 'root'
+  #   container_name: dev_db
+  #   ports:
+  #     # <Port exposed> : < MySQL Port running inside container>
+  #     - '33060:3306'
+  #   tty: true
+# Names our volume
+# volumes:
+#   my-db:
