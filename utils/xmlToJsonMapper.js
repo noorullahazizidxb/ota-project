@@ -62,7 +62,17 @@ async function mapXmlToJson(xmlString) {
   // Helper: build segment details from segment object
   function buildSegmentDetails(segment, parsedData) {
     // DEBUG: log the actual segment object being mapped
-    // Process segment details
+    console.log('DEBUG buildSegmentDetails input:', JSON.stringify(segment, null, 2));
+    // DEBUG: log the parsedData structure
+    console.log('DEBUG parsedData available:', parsedData ? 'Yes' : 'No');
+    if (parsedData && parsedData.Response) {
+      console.log('DEBUG Response available:', parsedData.Response ? 'Yes' : 'No');
+      if (parsedData.Response.DataLists) {
+        console.log('DEBUG DataLists available:', parsedData.Response.DataLists ? 'Yes' : 'No');
+        console.log('DEBUG BaggageAllowanceList available:', 
+          parsedData.Response.DataLists.BaggageAllowanceList ? 'Yes' : 'No');
+      }
+    }
     if (!segment) return {};
     
     // Extract all needed components from segment
@@ -76,21 +86,21 @@ async function mapXmlToJson(xmlString) {
     
     // Get baggage reference ID from segment or service associations
     const baggageRefID = getAny(segment, ['BaggageAllowanceRefID'], '');
-    // Get baggage reference ID
+    console.log('DEBUG: Baggage Reference ID:', baggageRefID);
     
     // Extract baggage allowance from DataLists if available
     let baggage = {};
     if (parsedData && parsedData.Response && parsedData.Response.DataLists && 
         parsedData.Response.DataLists.BaggageAllowanceList && 
         parsedData.Response.DataLists.BaggageAllowanceList.BaggageAllowance) {
-        // Found BaggageAllowanceList in parsedData
+        console.log('DEBUG: Found BaggageAllowanceList in parsedData');
         
         const baggageList = _.castArray(parsedData.Response.DataLists.BaggageAllowanceList.BaggageAllowance);
-        // Process BaggageAllowance list
+        console.log('DEBUG: BaggageAllowance list length:', baggageList.length);
         
         // Log the first baggage item structure to understand its format
         if (baggageList.length > 0) {
-            // Check first baggage item structure
+            console.log('DEBUG: First baggage item structure:', JSON.stringify(baggageList[0], null, 2));
         }
         
         // Try to find by reference ID first, then fallback to the first item in the list
@@ -101,31 +111,31 @@ async function mapXmlToJson(xmlString) {
         // If no specific baggage item found, use the first one in the list
         if (!baggageItem && baggageList.length > 0) {
             baggageItem = baggageList[0];
-            // Use first baggage item from list
+            console.log('DEBUG: Using first baggage item from list');
         }
-        // Check if baggage item was found
+        console.log('DEBUG: Found baggage item:', baggageItem ? 'Yes' : 'No');
         
         if (baggageItem) {
-            // Get baggage item ID
+            console.log('DEBUG: Baggage item ID:', getAny(baggageItem, ['BaggageAllowanceID'], 'Not found'));
             
             // Try multiple possible paths for piece allowance
             const pieceAllowance = getAny(baggageItem, ['PieceAllowance'], {});
-            // Check if PieceAllowance was found
+            console.log('DEBUG: PieceAllowance found:', pieceAllowance ? 'Yes' : 'No');
             
             // Try multiple possible paths for weight allowance
             let pieceWeightAllowance = getAny(pieceAllowance, ['PieceWeightAllowance'], {});
             if (!pieceWeightAllowance || Object.keys(pieceWeightAllowance).length === 0) {
                 pieceWeightAllowance = getAny(baggageItem, ['WeightAllowance'], {});
-                // Use direct WeightAllowance path
+                console.log('DEBUG: Using direct WeightAllowance path');
             }
-            // Check if WeightAllowance was found
+            console.log('DEBUG: WeightAllowance found:', pieceWeightAllowance ? 'Yes' : 'No');
             
             // Try multiple possible paths for maximum weight measure
             let maxWeightMeasure = getAny(pieceWeightAllowance, ['MaximumWeightMeasure'], {});
             if (!maxWeightMeasure || Object.keys(maxWeightMeasure).length === 0) {
                 maxWeightMeasure = pieceWeightAllowance; // Sometimes the weight measure is directly in the weight allowance
             }
-            // Get MaxWeightMeasure structure
+            console.log('DEBUG: MaxWeightMeasure structure:', JSON.stringify(maxWeightMeasure, null, 2));
             
             // Directly set the baggage allowance structure to the required format
             // Extract unit code from XML if available, otherwise default to 'KG'
@@ -148,7 +158,7 @@ async function mapXmlToJson(xmlString) {
                     UnitOfMeasureQuantity: weightValue
                 }
             };
-            // Baggage details transformed
+            console.log('DEBUG: Transformed baggage details:', JSON.stringify(baggage, null, 2));
         }
     }
     
@@ -328,11 +338,19 @@ async function mapXmlToJson(xmlString) {
     const currency = get(priceObj, 'BaseAmount.$.CurCode', get(priceObj, 'TotalAmount.$.CurCode', 'USD'));
     
     // Log the extracted values for debugging
-    // Price values extracted
+    console.log('DEBUG: Price values extracted:', {
+      base,
+      discount,
+      fee,
+      surcharge,
+      totalTax,
+      totalAmount,
+      currency
+    });
     
     // Verify the calculation formula: BaseAmount + Fee + TotalTaxAmount + Surcharge - Discount = TotalAmount
     const calculatedTotal = base +defaultCommission + fee + totalTax + surcharge - discount;
-    // Verify calculated total vs XML total
+    console.log('DEBUG: Calculated total:', calculatedTotal, 'vs XML total:', totalAmount);
     
     return {
       BaseFare: base,
@@ -380,7 +398,11 @@ async function mapXmlToJson(xmlString) {
       TotalCommission: defaultCommission
     };
     
-    // Commission values set
+    // Log the commission values for debugging
+    console.log('DEBUG: Commission values:', {
+      itinTotalFareCommission: updatedItinTotalFare.TotalCommission,
+      passengerFareCommission: ptcFareBreakdowns[0]?.PassengerFare?.Commission || 'N/A'
+    });
     
     const airItineraryPricingDetails = [
       {

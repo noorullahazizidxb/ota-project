@@ -104,7 +104,7 @@ async function buildAirShoppingRQ(searchParams) {
         // Use the original passenger type codes from the payload
         const passengerTypes = searchParams.passengerTypes || [];
         
-        // Build XML with original passenger types
+        console.log('Building XML with original passenger types:', passengerTypes);
         
         // Generate passenger XML using the original passenger type codes
         // Create multiple entries for each passenger type based on quantity
@@ -112,12 +112,12 @@ async function buildAirShoppingRQ(searchParams) {
         let paxCounter = 1;
         
         // Log the passenger types for debugging
-        // Process passenger types
+        console.log('Processing passenger types:', passengerTypes);
         
         // Process each passenger type in the array
         passengerTypes.forEach((pt, typeIndex) => {
             const quantity = parseInt(pt.Quantity, 10);
-            // Process each passenger type with its quantity
+            console.log(`Processing passenger type ${pt.Code} with quantity ${quantity}`);
             
             // Create multiple entries if quantity > 1
             for (let i = 0; i < quantity; i++) {
@@ -131,7 +131,7 @@ async function buildAirShoppingRQ(searchParams) {
             }
         });
         
-        // Passenger XML entries generated
+        console.log('Generated passenger XML entries:', paxsXml);
         
         const apiVersion = process.env.AJET_NDC_API_VERSION || '20.1';
         const username = process.env.AJET_NDC_USER_ID || 'NEWLINKTRAVEL';
@@ -192,7 +192,9 @@ async function buildAirShoppingRQ(searchParams) {
 </SOAP-ENV:Envelope>`;
 
         // Print the XML request in console for debugging
-        // XML request payload ready for sending
+        console.log('\n\n==== COMPLETE XML REQUEST ====');
+        console.log(xmlPayload);
+        console.log('==== END OF XML REQUEST ====\n\n');
         
         return xmlPayload;
     } catch (error) {
@@ -240,11 +242,13 @@ async function sendAirShoppingRequest(searchParams, options = {}) {
         };
         
         try {
-            // Sending request to AJet NDC service
+            console.log('Sending request to AJet NDC service...');
+            console.log('Using endpoint:', endpoint);
+            console.log('Headers:', JSON.stringify(headers, null, 2));
             
             // Log the first 500 characters of the payload for debugging
             if (options.logRequest) {
-                // Request payload being sent
+                console.log('Request payload (first 500 chars):', xmlPayload.substring(0, 500) + '...');
             }
             
             // Start timer for performance measurement
@@ -266,9 +270,9 @@ async function sendAirShoppingRequest(searchParams, options = {}) {
             console.timeEnd('ajet-ndc-request');
             
             // Log response status and headers
-            // Response received
+            console.log('Response status:', response.status);
             if (options.logResponse) {
-                // Process response headers
+                console.log('Response headers:', JSON.stringify(response.headers, null, 2));
             }
             
             // Check for SOAP fault
@@ -276,10 +280,11 @@ async function sendAirShoppingRequest(searchParams, options = {}) {
                 const faultMatch = response.data.match(/<faultstring>(.*?)<\/faultstring>/);
                 const faultString = faultMatch ? faultMatch[1] : 'Unknown SOAP fault';
                 
-                // SOAP fault detected
+                console.log('SOAP fault detected:', faultString);
                 
                 if (response.status === 500) {
-                    // Server error detected in response
+                    console.log('Server error (500) detected in response');
+                    console.log('Fault:', faultString);
                     
                     return {
                         status: response.status,
@@ -296,7 +301,7 @@ async function sendAirShoppingRequest(searchParams, options = {}) {
             // Log a sample of the response
             if (response.data && options.logResponse) {
                 const responsePreview = response.data.substring(0, 500) + '...';
-                // Response data received
+                console.log('Response data (first 500 chars):', responsePreview);
             }
             
             // Parse the SOAP response
@@ -304,15 +309,15 @@ async function sendAirShoppingRequest(searchParams, options = {}) {
             try {
                 // Log the raw XML for debugging
                 if (process.env.NODE_ENV === 'development') {
-                    // Raw XML response received
+                    console.log('Raw XML response (first 1000 chars):', response.data.substring(0, 1000));
                 }
                 
                 // Use our custom XML to JSON mapper
-                // Convert XML to JSON
+                console.log('Calling XML to JSON mapper');
                 transformedResponse = await mapXmlToJson(response.data);
                 
                 // Log the result of mapping
-                // Mapping complete
+                console.log('Mapping complete, found', transformedResponse.Items.length, 'flight options');
                 
                 // Add any additional required fields
                 transformedResponse.SessionId = uuidv4();
@@ -920,12 +925,12 @@ function exampleUsage() {
 
     // Get the raw XML payload
     const xmlPayload = getRawXmlPayload(searchParams);
-    // XML Payload generated
+    console.log('Generated XML Payload:', xmlPayload);
 
     // Send the request
     sendAirShoppingRequest(searchParams)
         .then(response => {
-            // Response received successfully
+            console.log('Response received successfully');
         })
         .catch(error => {
             console.error('Error in example usage:', error.message);
